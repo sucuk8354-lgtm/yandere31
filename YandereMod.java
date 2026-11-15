@@ -91,7 +91,7 @@ public class YandereMod implements ModInitializer {
 
     public static YandereEntity find(ServerPlayerEntity player) {
         ServerWorld w = (ServerWorld) player.getWorld();
-        List<YandereEntity> l = w.getEntitiesByType(YANDERE, e -> player.getUuid().equals(e.getOwnerId()));
+       List<? extends YandereEntity> l = w.getEntitiesByType(YANDERE, e -> player.getUuid().equals(e.getOwnerId()));
         return l.isEmpty() ? null : l.get(0);
     }
 
