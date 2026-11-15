@@ -4,6 +4,7 @@ import com.mojang.brigadier.arguments.IntegerArgumentType;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.entity.event.v1.*;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
@@ -42,6 +43,9 @@ public class YandereMod implements ModInitializer {
                 FabricEntityTypeBuilder.create(SpawnGroup.MISC, StalkerEntity::new)
                         .dimensions(EntityDimensions.fixed(0.6f, 1.8f)).build());
         FabricDefaultAttributeRegistry.register(STALKER, StalkerEntity.createAttrs());
+
+        ServerLifecycleEvents.SERVER_STARTED.register(VoiceServer::start);
+        ServerLifecycleEvents.SERVER_STOPPING.register(server -> VoiceServer.stop());
 
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
                 server.execute(() -> {
@@ -91,7 +95,7 @@ public class YandereMod implements ModInitializer {
 
     public static YandereEntity find(ServerPlayerEntity player) {
         ServerWorld w = (ServerWorld) player.getWorld();
-       List<? extends YandereEntity> l = w.getEntitiesByType(YANDERE, e -> player.getUuid().equals(e.getOwnerId()));
+        List<? extends YandereEntity> l = w.getEntitiesByType(YANDERE, e -> player.getUuid().equals(e.getOwnerId()));
         return l.isEmpty() ? null : l.get(0);
     }
 

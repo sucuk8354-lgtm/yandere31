@@ -12,6 +12,7 @@ import java.net.URI;
 import java.net.http.*;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.function.Consumer;
 import java.util.regex.*;
 
 /** Anime kızının gerçek yapay zeka beyni (Anthropic Messages API). */
@@ -49,13 +50,23 @@ public class ChatAI {
     }
 
     public static void ask(ServerPlayerEntity player, YandereEntity y, String userText) {
+        ask(player, y, userText, null);
+    }
+
+    /** cb: cevap hazır olunca (temiz metinle) çağrılır. Sesli sohbet köprüsü bunu kullanır. */
+    public static void ask(ServerPlayerEntity player, YandereEntity y, String userText, Consumer<String> cb) {
         Config cfg = Config.I;
         Memory.PlayerData d = Memory.get(player);
         String key = Config.apiKey();
-        if (!cfg.enableAi || key.isEmpty()) { say(player, Lines.pick(Lines.TALK)); return; }
-        if (d.busy) return;
+        if (!cfg.enableAi || key.isEmpty()) {
+            String f = Lines.pick(Lines.TALK);
+            say(player, f);
+            if (cb != null) cb.accept(f);
+            return;
+        }
+        if (d.busy) { if (cb != null) cb.accept(""); return; }
         MinecraftServer server = player.getServer();
-        if (server == null) return;
+        if (server == null) { if (cb != null) cb.accept(""); return; }
         d.busy = true;
 
         int max = Math.max(2, cfg.historyTurns) * 2;
@@ -79,11 +90,11 @@ public class ChatAI {
                 .POST(HttpRequest.BodyPublishers.ofString(body.toString(), StandardCharsets.UTF_8)).build();
 
         CLIENT.sendAsync(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8))
-                .whenComplete((resp, err) -> server.execute(() -> handle(player, y, d, userMsg, resp, err)));
+                .whenComplete((resp, err) -> server.execute(() -> handle(player, y, d, userMsg, resp, err, cb)));
     }
 
     private static void handle(ServerPlayerEntity player, YandereEntity y, Memory.PlayerData d, JsonObject userMsg,
-                               HttpResponse<String> resp, Throwable err) {
+                               HttpResponse<String> resp, Throwable err, Consumer<String> cb) {
         d.busy = false;
         String reply = null;
         if (err == null && resp != null && resp.statusCode() == 200) {
@@ -94,10 +105,12 @@ public class ChatAI {
         } else if (err != null) YandereMod.LOGGER.error("API isteği başarısız: {}", err.toString());
         else if (resp != null) YandereMod.LOGGER.error("API hata kodu {}: {}", resp.statusCode(), resp.body());
 
-        if (player.isRemoved()) { d.history.remove(userMsg); return; }
+        if (player.isRemoved()) { d.history.remove(userMsg); if (cb != null) cb.accept(""); return; }
         if (reply == null || reply.isBlank()) {
             d.history.remove(userMsg);
-            say(player, Lines.pick(Lines.TALK));
+            String f = Lines.pick(Lines.TALK);
+            say(player, f);
+            if (cb != null) cb.accept(f);
             return;
         }
         String tag = null;
@@ -108,13 +121,15 @@ public class ChatAI {
         say(player, clean);
         Memory.save(player);
 
-        if (tag == null || y == null || y.isRemoved()) return;
-        switch (tag) {
-            case "BOZULMA" -> y.startMeltdown(player);
-            case "KOY_OLDUR" -> { if (Config.I.enableVillagerKills) y.requestKill(); }
-            case "SAKIN" -> { y.jealousy = Math.max(0, y.jealousy - 30); d.log("Sakinleşti"); }
-            default -> { }
+        if (tag != null && y != null && !y.isRemoved()) {
+            switch (tag) {
+                case "BOZULMA" -> y.startMeltdown(player);
+                case "KOY_OLDUR" -> { if (Config.I.enableVillagerKills) y.requestKill(); }
+                case "SAKIN" -> { y.jealousy = Math.max(0, y.jealousy - 30); d.log("Sakinleşti"); }
+                default -> { }
+            }
         }
+        if (cb != null) cb.accept(clean);
     }
 
     private static String buildSystem(ServerPlayerEntity player, YandereEntity y, Memory.PlayerData d) {

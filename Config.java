@@ -20,6 +20,9 @@ public class Config {
     public double jealousyPerVillagerPerSecond = 0.4;
     public double jealousyDecayPerSecond = 0.15;
     public double meltdownThreshold = 100.0;
+    /** Sesli sohbet köprüsü (yandere-ses.html sayfası buraya bağlanır). */
+    public boolean enableVoiceBridge = true;
+    public int voicePort = 8765;
 
     static Path path() { return FabricLoader.getInstance().getConfigDir().resolve("yanderehorror.json"); }
 

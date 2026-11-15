@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yandere Sesli Sohbet</title>
+<style>
+  :root { --bg:#fff5fb; --card:#ffffff; --text:#2a1a2e; --muted:#7a6680; --pink:#e0529c; --red:#c4122f; --line:#f0d4e4; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#17101c; --card:#221828; --text:#f6e9f3; --muted:#b59cbc; --pink:#ff7ab8; --red:#ff4a63; --line:#3a2842; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,"Segoe UI",sans-serif; background:var(--bg); color:var(--text); min-height:100vh; display:flex; justify-content:center; }
+  main { width:100%; max-width:640px; padding:24px 16px 40px; }
+  h1 { font-size:1.4rem; margin:0 0 4px; }
+  .sub { color:var(--muted); font-size:.9rem; margin-bottom:18px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:14px; }
+  .row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .dot { width:11px; height:11px; border-radius:50%; background:#999; flex:none; }
+  .dot.ok { background:#2ea66a; } .dot.bad { background:var(--red); }
+  button { font:inherit; cursor:pointer; border:0; border-radius:12px; padding:14px 20px; background:var(--pink); color:#fff; font-weight:600; width:100%; font-size:1.05rem; }
+  button.stop { background:var(--red); }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  select { font:inherit; padding:8px; border-radius:8px; border:1px solid var(--line); background:var(--card); color:var(--text); max-width:100%; }
+  #state { font-weight:600; }
+  #log { display:flex; flex-direction:column; gap:8px; max-height:50vh; overflow-y:auto; }
+  .msg { padding:10px 12px; border-radius:12px; font-size:.97rem; line-height:1.4; max-width:90%; }
+  .me { align-self:flex-end; background:var(--line); }
+  .her { align-self:flex-start; border:1px solid var(--pink); }
+  .her.psycho { border-color:var(--red); color:var(--red); }
+  .hint { color:var(--muted); font-size:.85rem; line-height:1.5; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Yandere Sesli Sohbet</h1>
+  <div class="sub">Minecraft açıkken, bir dünyaya girdikten sonra kullan. Kulaklık tak, yoksa kız kendi sesini de duyar.</div>
+
+  <div class="card">
+    <div class="row"><span id="dot" class="dot"></span><span id="conn">Oyuna bağlanılıyor...</span></div>
+    <div class="row" style="margin-top:8px"><span>Durum:</span> <span id="state">Kapalı</span></div>
+  </div>
+
+  <div class="card">
+    <button id="toggle">Dinlemeyi başlat</button>
+    <div class="row" style="margin-top:12px">
+      <label for="voice">Ses:</label>
+      <select id="voice"></select>
+    </div>
+  </div>
+
+  <div class="card"><div id="log"><div class="hint">Konuşmaya başlayınca yazılanlar burada görünür.</div></div></div>
+
+  <div class="hint" id="warn"></div>
+</main>
+
+<script>
+const PORT = 8765;
+const BASE = "http://127.0.0.1:" + PORT;
+
+const $ = id => document.getElementById(id);
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+let rec = null, running = false, busy = false, connected = false;
+let voices = [];
+
+if (!SR) {
+  $("warn").textContent = "Bu tarayıcı konuşma tanımayı desteklemiyor. Lütfen Google Chrome ya da Microsoft Edge kullan.";
+  $("toggle").disabled = true;
+}
+
+// ---- Bağlantı kontrolü ----
+async function ping() {
+  try {
+    const r = await fetch(BASE + "/ping");
+    connected = r.ok;
+  } catch (e) { connected = false; }
+  $("dot").className = "dot " + (connected ? "ok" : "bad");
+  $("conn").textContent = connected ? "Oyuna bağlı" : "Oyuna bağlanamadı (Minecraft açık mı, bir dünyaya girdin mi?)";
+}
+ping(); setInterval(ping, 3000);
+
+// ---- Ses seçimi ----
+function loadVoices() {
+  voices = speechSynthesis.getVoices();
+  const tr = voices.filter(v => v.lang.toLowerCase().startsWith("tr"));
+  const list = tr.length ? tr : voices;
+  const sel = $("voice");
+  sel.innerHTML = "";
+  list.forEach(v => {
+    const o = document.createElement("option");
+    o.value = v.name; o.textContent = v.name + " (" + v.lang + ")";
+    sel.appendChild(o);
+  });
+  // Kadın sesi tercih et
+  const pref = list.find(v => /google|emel|female|kad/i.test(v.name)) || list[0];
+  if (pref) sel.value = pref.name;
+}
+speechSynthesis.onvoiceschanged = loadVoices; loadVoices();
+
+function setState(t) { $("state").textContent = t; }
+
+function addMsg(text, cls) {
+  const log = $("log");
+  if (log.querySelector(".hint")) log.innerHTML = "";
+  const d = document.createElement("div");
+  d.className = "msg " + cls; d.textContent = text;
+  log.appendChild(d); log.scrollTop = log.scrollHeight;
+}
+
+// ---- Konuşma tanıma ----
+function startRec() {
+  if (!running || busy) return;
+  try { rec.start(); setState("Dinliyor..."); } catch (e) { /* zaten başlamış */ }
+}
+
+if (SR) {
+  rec = new SR();
+  rec.lang = "tr-TR";
+  rec.continuous = false;
+  rec.interimResults = false;
+
+  rec.onresult = async (e) => {
+    const text = e.results[0][0].transcript.trim();
+    if (!text) return;
+    addMsg(text, "me");
+    busy = true; setState("Düşünüyor...");
+    try {
+      const r = await fetch(BASE + "/say", { method: "POST", body: JSON.stringify({ text }) });
+      const j = await r.json();
+      if (j.reply) { addMsg(j.reply, "her" + (j.psycho ? " psycho" : "")); await speak(j.reply, j.psycho); }
+      else if (j.error) addMsg("(oyundan cevap gelmedi)", "her");
+    } catch (err) {
+      addMsg("(oyuna ulaşılamadı)", "her");
+    }
+    busy = false; startRec();
+  };
+  rec.onerror = (e) => {
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") {
+      $("warn").textContent = "Mikrofon izni verilmedi. Adres çubuğundaki kilit/ayar simgesinden mikrofona izin ver.";
+      running = false; $("toggle").textContent = "Dinlemeyi başlat"; $("toggle").className = ""; setState("Kapalı");
+    }
+  };
+  rec.onend = () => { if (running && !busy) setTimeout(startRec, 200); };
+}
+
+// ---- Sesli okuma ----
+function speak(text, psycho) {
+  return new Promise(resolve => {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "tr-TR";
+    const v = voices.find(x => x.name === $("voice").value);
+    if (v) u.voice = v;
+    u.pitch = psycho ? 0.4 : 1.15;   // kızgınken kalın ve yavaş
+    u.rate = psycho ? 0.85 : 1.0;
+    u.onend = resolve; u.onerror = resolve;
+    setState("Konuşuyor...");
+    speechSynthesis.speak(u);
+  });
+}
+
+// ---- Başlat / durdur ----
+$("toggle").onclick = () => {
+  if (!running) {
+    running = true;
+    $("toggle").textContent = "Dinlemeyi durdur"; $("toggle").className = "stop";
+    startRec();
+  } else {
+    running = false;
+    try { rec.stop(); } catch (e) {}
+    speechSynthesis.cancel();
+    $("toggle").textContent = "Dinlemeyi başlat"; $("toggle").className = "";
+    setState("Kapalı");
+  }
+};
+</script>
+</body>
+</html>
