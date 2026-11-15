@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "yanderemod",
+  "version": "${version}",
+  "name": "Yandere Horror",
+  "description": "Yanında doğan, yapay zekayla konuşan yandere anime kızı korku modu.",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["com.yandere.mod.YandereMod"],
+    "client": ["com.yandere.mod.YandereClient"]
+  },
+  "depends": {
+    "fabricloader": ">=0.14.21",
+    "minecraft": "~1.20.1",
+    "java": ">=17",
+    "fabric-api": "*"
+  }
+}
