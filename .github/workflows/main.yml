@@ -1,0 +1,28 @@
+name: Build mod
+on:
+  push:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dosyalari yerlestir
+        run: |
+          mkdir -p src/main/java/com/yandere/mod
+          mkdir -p src/main/resources/assets/yanderemod/textures/entity
+          mv *.java src/main/java/com/yandere/mod/ || true
+          mv fabric.mod.json src/main/resources/ || true
+          mv *.png src/main/resources/assets/yanderemod/textures/entity/ || true
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 8.5
+      - run: gradle build --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yandere-mod-jar
+          path: build/libs/*.jar
